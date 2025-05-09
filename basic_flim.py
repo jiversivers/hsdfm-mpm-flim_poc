@@ -65,7 +65,7 @@ def main():
         iio.imwrite(out_path / 'a2_fraction.tiff', a2_fraction)
 
 
-    df = pd.DataFrame(output, columns=['Animal', 'Date', 'Oxygen', 'FOV', 'Mean A2', 'StDev A2', 'Full data path'])
+    return pd.DataFrame(output, columns=['Animal', 'Date', 'Oxygen', 'FOV', 'Mean A2', 'StDev A2', 'Full data path'])
 
 if __name__ == '__main__':
     df = main()
