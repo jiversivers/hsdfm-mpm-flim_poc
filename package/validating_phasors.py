@@ -1,26 +1,30 @@
 import gc
-import sys
 from multiprocessing import Pool
 
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 from numpy import iterable
 import itertools
+
 from tqdm import tqdm
-from scipy.ndimage import median_filter
 
 from hsdfmpm.mpm import InstrumentResponseFunction
-from hsdfmpm.mpm.flim.utils import get_phasor_coordinates, polar_from_cartesian, cartesian_from_polar, \
-    plot_universal_circle, fit_phasor, cartesian_from_lifetime, find_intersection_with_circle, project_to_line, \
-    lifetime_from_cartesian, get_endpoints_from_projection, phasor_svd, convert_vT_to_point_slope
+from hsdfmpm.mpm.flim.utils import (
+    get_phasor_coordinates,
+    polar_from_cartesian,
+    cartesian_from_polar,
+    find_intersection_with_circle,
+    project_to_line,
+    lifetime_from_cartesian,
+    get_endpoints_from_projection,
+    phasor_svd,
+    convert_vT_to_point_slope
+)
 
 rng = np.random.default_rng(42)
 omega = 2 * np.pi * 80e6
 t = np.linspace(0.5, 10.5, 256) / 1e9
 irf = InstrumentResponseFunction.load()
-phase_shift = irf.phase_offset
-modulation_factor = irf.modulation_factor
 
 def generate_decay_histogram(tau1, tau2=None, alpha=1.0, n_photons=1e3, bin_count=256, t_max=10.0e-9):
     tau1  = np.asanyarray(tau1,  dtype=float)
@@ -82,13 +86,11 @@ def process_simulation(args):
 
     if convolved:
         decay = convolve_with_irf(decay)
-    g, s, photons = get_phasor_coordinates(decay)
+    P, photons = get_phasor_coordinates(decay, as_complex=True)
 
     if convolved:
-        phi, mod = polar_from_cartesian(g, s)
-        phi += phase_shift
-        mod *= modulation_factor
-        g, s = cartesian_from_polar(phi, mod)
+        P *= irf.correction
+    g, s = P.real, P.imag
 
     # Fit a line
     vT, ratio, mu = phasor_svd(g, s)
@@ -120,9 +122,8 @@ if __name__ == '__main__':
     alpha_spread = np.arange(0, 0.5, 0.05)
     convolved = [False, True]
 
-    sys.stdout.write('\n')
+    pool = Pool(processes=15)
     try:
-        pool = Pool(processes=15)
         stats = pool.imap(
             process_simulation,
             itertools.product(tau1_value_arr, tau2_value_arr, alpha_center, alpha_spread, convolved),
@@ -178,4 +179,3 @@ if __name__ == '__main__':
     finally:
         pool.close()
         pool.join()
-
