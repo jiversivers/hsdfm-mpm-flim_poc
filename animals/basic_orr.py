@@ -13,7 +13,7 @@ import pandas as pd
 from tqdm import tqdm
 
 # Dir stuff
-root_dir = Path(r'E:\new df\POC Study')
+root_dir = Path(r'D:\Jesse\hsdfmpm_poc')
 processed = root_dir / 'Processed'
 processed.mkdir(exist_ok=True)
 

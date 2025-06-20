@@ -1,10 +1,11 @@
-from itertools import product
+import gc
+from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 from hsdfmpm.hsdfm.utils import find_cycles, gabor_filter_bank, naive_leastsq_reflectance
-from hsdfmpm.hsdfm.fit import reduced_chi_squared
+from hsdfmpm.hsdfm.fit import reduced_chi_squared, fit_volume
 from hsdfmpm.utils import apply_kernel_bank
 import pandas as pd
 from hsdfmpm.hsdfm import HyperspectralImage, MergedHyperspectralImage
@@ -20,26 +21,33 @@ import imageio.v3 as iio
 from datetime import datetime, timedelta
 import warnings
 
-from scipy.optimize import least_squares
-from hsdfmpm.hsdfm.fit import make_residual
-
 # Dir stuff
-root = Path(r'E:\new df\POC Study')
+root = Path(r'D:\Jesse\hsdfmpm_poc')
 processed = root / 'Processed'
 processed.mkdir(exist_ok=True)
-
-# Find raw data
-cycles = find_cycles(root / 'Animals')
 
 # Choose fitting wavelengths
 wavelengths = np.arange(500, 730, 10)
 
 # Load normalization data
 standard_paths = find_cycles(root / 'Standards')
-background = MergedHyperspectralImage(image_paths=find_cycles(root / 'Background' / 'dark_04282025'), wavelengths=wavelengths)
-background.normalize()
+standard = MergedHyperspectralImage(image_paths=standard_paths, wavelengths=wavelengths, scalar=0.8)
+standard.normalize_integration_time()
 
-lut = LUT(dimensions=['mu_s', 'mu_a'], scale=50000)
+background = MergedHyperspectralImage(image_paths=find_cycles(root / 'Background'), wavelengths=wavelengths)
+background.normalize_integration_time()
+
+# Detach and garbage collect big objects
+standard = standard.image.copy()
+background = background.image.copy()
+gc.collect()
+
+# Get MCLUT
+lut = LUT(dimensions=['mu_s', 'mu_a'], scale=50000, extrapolate=True, simulation_id=88)
+
+# Prep filter bank
+f = np.geomspace(0.01, 1, 16)
+gabor_bank = gabor_filter_bank(frequency=f, sigma_x=4 / f, sigma_y=1 / f)
 
 def parse_categorical(cycle):
     # Prepare categorical data
@@ -47,8 +55,7 @@ def parse_categorical(cycle):
     date = datetime.strptime(cycle.parts[5], '%m%d%Y')
     oxygen = cycle.parts[6]
     fov = cycle.parts[7]
-    polarized = 'polar' in str(cycle) and not 'unp' in str(cycle)
-    return animal, date, oxygen, fov, polarized
+    return animal, date, oxygen, fov
 
 
 def find_dated_dir(date, paths):
@@ -65,39 +72,40 @@ def find_dated_dir(date, paths):
 
 def model(a, b, t, s):
     mu_s, mu_a, _ = hemoglobin_mus(a, b, t, s, wavelengths, force_feasible=False)
+    mu_s /= 0.1
     r = lut(mu_s, mu_a, extrapolate=True)
     return r
 
 
-def main():
-    # Prep reusable parts
-    f = np.geomspace(0.01, 1, 16)
-    gabor_bank = gabor_filter_bank(frequency=f, sigma_x=4 / f, sigma_y=1 / f)
-
-    output = []
-
-    for cycle in tqdm.tqdm(cycles):
+def process_cycle(cycle, skip_today=False):
+    try:
         # Parse categorical data
-        animal, date, oxygen, fov, polarization = parse_categorical(cycle)
-        out_path = processed / animal / datetime.strftime(date,
-                                                          '%m%d%Y') / oxygen / fov / f'{'polarized' if polarization else 'nonpolarized'}'
+        animal, date, oxygen, fov = parse_categorical(cycle)
+        out_path = processed / animal / datetime.strftime(date,'%m%d%Y') / oxygen / fov
         out_path.mkdir(exist_ok=True, parents=True)
 
-        # Load standard
-        standard_path = find_dated_dir(date, standard_paths)
-        if polarization:
-            standard_path = [path for path in standard_path if 'polar' in str(path) and 'unpolar' not in str(path)]
-        else:
-            standard_path = [path for path in standard_path if 'polar' not in str(path) or 'unpolar' in str(path)]
+        if skip_today and (out_path / 'scatter_a.tiff').exists() and datetime.fromtimestamp((out_path / 'scatter_a.tiff').stat().st_mtime).date() == datetime.today().date():
+            print(f'Skipping cycle {cycle}')
+            mask = cv2.imread(out_path / 'hsdfm_mask.tiff', cv2.IMREAD_UNCHANGED)
+            a = cv2.imread(out_path / 'scatter_a.tiff', cv2.IMREAD_UNCHANGED)
+            b = cv2.imread(out_path / 'scatter_b.tiff', cv2.IMREAD_UNCHANGED)
+            thb = cv2.imread(out_path / 'thb.tiff', cv2.IMREAD_UNCHANGED)
+            so2 = cv2.imread(out_path / 'so2.tiff', cv2.IMREAD_UNCHANGED)
 
-        standard = MergedHyperspectralImage(image_paths=standard_path, wavelengths=wavelengths, scalar=0.8)
-        standard.normalize()
+            # Update output
+            output = [
+                animal, date, oxygen, fov,
+                np.mean(a[mask]), np.mean(b[mask]), np.mean(thb[mask]), np.mean(so2[mask]), str(cycle)
+            ]
+
+            return output
 
         # Load cycle subset for naive fitting to mask
-        hs = HyperspectralImage(image_path=cycle, wavelengths=wavelengths, standard=standard, background=background)
+        hs = HyperspectralImage(image_path=cycle, wavelengths=wavelengths)
 
-        # Normalize (automatically normalizes to integration time then the standard/background
-        hs.normalize()
+        # Normalize (automatically normalizes to integration time then the standard/background (manually, for memory)
+        hs.normalize_integration_time()
+        hs._active = (hs - background) / (standard - background)
 
         # Resize to 256x256
         hs.resize_to(256)
@@ -114,27 +122,30 @@ def main():
         gabor_response = apply_kernel_bank(hb_index, gabor_bank)
 
         # Create and mask
-        mask = np.logical_and(
-            cv2.adaptiveThreshold((255 * gabor_response / gabor_response.max()).astype(np.uint8), 255,
-                                  cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 0).astype(bool),
-            (gabor_response > 0.1).astype(bool)
-        )
+        mask = cv2.adaptiveThreshold((255 * gabor_response / gabor_response.max()).astype(np.uint8), 255,
+                                  cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 0)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3)))
         mask = mask.astype(bool)
         hs.apply_mask(mask)
         iio.imwrite(out_path / 'gabor_response.tiff', gabor_response)
         iio.imwrite(out_path / 'hb_index.tiff', hb_index)
+        fig, ax = plt.subplots()
+        ax.plot(np.nanmean(hs, axis=(1, 2)))
 
         # Fit image
         hs.superset()  # Reset to full spectrum
-        param_image, chi_sq = hs.fit(
-            model,
-            x0=[1, 1, 1, 1],
+        img = hs.image.copy()  # Detach from object to save memory (no need to have standard and raw data persist)
+        del hs
+        gc.collect()
+        param_image, chi_sq = fit_volume(
+            volume=img,
+            model=model,
+            x0=[0.5, 0.5, 0.5, 0.5],
             bounds=[(0, 0, 0, 0), (np.inf, np.inf, np.inf, 1)],
-            n_workers=15,
+            use_multiprocessing=False,
             score_function=reduced_chi_squared,
             max_nfev=5000)
         a, b, thb, so2, = param_image
-        # mask = np.logical_and(mask, chi_sq < 1.5)
 
         # Create color maps
         cmap = truncate_colormap('jet', cmin=0.13, cmax=0.88)
@@ -155,9 +166,10 @@ def main():
             plt.close(fig)
 
         # Update output
-        output.append([animal, date, oxygen, fov, polarization,
-                       np.mean(a[mask]), np.mean(b[mask]), np.mean(thb[mask]), np.mean(so2[mask]), str(cycle)
-                       ])
+        output = [
+            animal, date, oxygen, fov,
+            np.mean(a[mask]), np.mean(b[mask]), np.mean(thb[mask]), np.mean(so2[mask]), str(cycle)
+                  ]
         iio.imwrite(out_path / 'hsdfm_mask.tiff', mask)
         iio.imwrite(out_path / 'scatter_a.tiff', a)
         iio.imwrite(out_path / 'scatter_b.tiff', b)
@@ -166,10 +178,32 @@ def main():
 
         iio.imwrite(out_path / 'hsdfm_chi_sq.tiff', chi_sq)
 
-    df = pd.DataFrame(output,
-                      columns=['Animal', 'Date', 'Oxygen', 'FOV', 'Polarization', 'Mean Scatter A', 'Mean Scatter B',
-                               'Mean THb', 'Mean sO2', 'Full data path'])
-    df.to_csv(processed / 'hsdfm_output.csv')
+        return output
+    except Exception as e:
+        print(f'{e}\non\n{cycle}')
+        gc.collect()
+        return [
+        animal, date, oxygen, fov,
+        np.nan, np.nan, np.nan, np.nan, str(cycle)
+        ]
+
 
 if __name__ == '__main__':
-    main()
+    # Find raw data
+    cycles = find_cycles(root / 'Animals')
+    # pool = Pool(19)
+    output = []
+    try:
+        for out in tqdm.tqdm(map(process_cycle, cycles), total=len(cycles)):
+            output.append(out)
+    finally:
+        # pool.terminate()
+        # pool.close()
+        # pool.join()
+        # del pool
+        gc.collect()
+
+    df = pd.DataFrame(output,
+                      columns=['Animal', 'Date', 'Oxygen', 'FOV', 'Mean Scatter A', 'Mean Scatter B',
+                               'Mean THb', 'Mean sO2', 'Full data path'])
+    df.to_csv(processed / 'hsdfm_output.csv')

@@ -10,7 +10,7 @@ from datetime import datetime
 import pandas as pd
 
 # Dir stuff
-root_dir = Path(r'E:\new df\POC Study')
+root_dir = Path(r'D:\Jesse\hsdfmpm_poc')
 processed = root_dir / 'Processed'
 processed.mkdir(exist_ok=True)
 
@@ -37,8 +37,12 @@ def main():
         decay.load_irf()
         decay.resize_to(256)
 
+        # TODO: Test and confirm threshold and median
+
         # Calculate phasor coords and fit-line endpoints
         g, s = decay.phasor_coordinates(threshold=25, median_filter_count=0, correction=True)
+
+        # TODO: Test some sort of checker for the number of species
         alphas, taum, tau = decay.fit_for_lifetime_approximations(median_filter_count=1, k_size=5)
         a2_fraction = alphas[1] / (alphas[0] + alphas[1])
         a1_fraction = alphas[0] / (alphas[0] + alphas[1])
