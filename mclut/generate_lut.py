@@ -46,8 +46,7 @@ def generate():
                                  variable,
                                  {'mu_s': mu_s_array, 'mu_a': mu_a_array},
                                  photon,
-                                 pbar=True,
-                                 num_workers=15)
+                                 pbar=True)
     return simulation_id
 
 def show_surfaces(simulation_id):
