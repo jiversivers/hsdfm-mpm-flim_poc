@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=mclut_generator_45deg
+#SBATCH --job-name=mclut_generator
 #SBATCH --partition=comp06
 #SBATCH --output=mclut_gen2.txt
 #SBATCH --error=mclut_gen2.err
