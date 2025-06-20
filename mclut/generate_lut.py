@@ -25,14 +25,14 @@ def generate():
     glass = Medium(n=1.523, mu_s=0, mu_a=0, g=0, desc='glass')
 
     # Create an illuminator
-    lamp = Illumination(create_oblique_beams((0, 1), 60, 1.5))
+    lamp = Illumination(create_oblique_beams((0, 1), 45, 2.5))
 
     # Create detection cone
     detector = Detector(create_cone_of_acceptance(r=1.8, na=1, n=1.33))
 
     # Start the system
-    system = System(di_water, 0.2,  # 1mm
-                    glass, 0.017,  # 0.17mm
+    system = System(di_water, 0.2,  # 2mm -> 0.2cm
+                    glass, 0.017,  # 0.17mm -> 0.017cm
                     surrounding_n=1.33,
                     illuminator=lamp,
                     detector=(detector, 0)

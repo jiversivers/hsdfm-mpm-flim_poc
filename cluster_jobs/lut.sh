@@ -1,12 +1,12 @@
 #!/bin/bash
 
-#SBATCH --job-name=mclut_generator
+#SBATCH --job-name=mclut_generator_45deg
 #SBATCH --partition=comp06
-#SBATCH --output=mclut_gen.txt
-#SBATCH --error=mclut_gen.err
+#SBATCH --output=mclut_gen2.txt
+#SBATCH --error=mclut_gen2.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=jdivers@uark.edu
-#SBATCH --nodes=2
+#SBATCH --nodes=4
 #SBATCH --ntasks-per-node=32
 #SBATCH --cpus-per-task=1
 #SBATCH --time=06:00:00
