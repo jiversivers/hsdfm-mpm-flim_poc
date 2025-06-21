@@ -25,7 +25,7 @@ def generate():
     glass = Medium(n=1.523, mu_s=0, mu_a=0, g=0, desc='glass')
 
     # Create an illuminator
-    lamp = Illumination(create_oblique_beams((0, 1), 60, 1.5))
+    lamp = Illumination(create_oblique_beams((0, 1), 45, 2.5))
 
     # Create detection cone
     detector = Detector(create_cone_of_acceptance(r=1.8, na=1, n=1.33))

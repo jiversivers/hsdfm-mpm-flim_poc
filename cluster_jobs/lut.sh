@@ -1,9 +1,9 @@
 #!/bin/bash
 
-#SBATCH --job-name=mclut_generator_60deg
+#SBATCH --job-name=mclut_generator_45deg
 #SBATCH --partition=comp06
-#SBATCH --output=mclut_gen_60deg.txt
-#SBATCH --error=mclut_gen_60deg.err
+#SBATCH --output=mclut_gen_45deg.txt
+#SBATCH --error=mclut_gen_45deg.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=jdivers@uark.edu
 #SBATCH --nodes=8
