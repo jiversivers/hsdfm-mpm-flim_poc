@@ -1,21 +1,23 @@
 #!/bin/bash
 
-#SBATCH --job-name=mclut_generator_45deg
-#SBATCH --partition=comp06
-#SBATCH --output=mclut_gen_45deg.txt
-#SBATCH --error=mclut_gen_45deg.err
+#SBATCH --job-name=mclut_generator_measured
+#SBATCH --partition=pcon06
+#SBATCH --output=mclut_gen_measured.txt
+#SBATCH --error=mclut_gen_measured.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=jdivers@uark.edu
-#SBATCH --nodes=8
-#SBATCH --ntasks-per-node=32
-#SBATCH --cpus-per-task=1
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=128
 #SBATCH --time=06:00:00
-#SBATCH --qos=gpu
+#SBATCH --qos=comp
 
 export OMP_NUM_THREADS=1
 
 # load required module
 module purge
+module load
 module load python/anaconda-3.14
 
 # Activate venv
