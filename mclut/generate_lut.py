@@ -10,16 +10,16 @@ mp.set_start_method('spawn', force=True)
 def generate():
 
     # Variable parameters: cm inverse
-    mu_s_prime_array = np.arange(0, 50.5, 0.5)
+    mu_s_prime_array = np.arange(0, 5, 0.5)
     mu_s_array = mu_s_prime_array / (1 - g)
-    mu_a_array = np.arange(0.5, 51, 0.5)
+    mu_a_array = np.arange(0.5, 5.5, 0.5)
 
     # Make water medium
     di_water = Medium(n=1.33, mu_s=0, mu_a=0, g=0, desc='di water')
     glass = Medium(n=1.523, mu_s=0, mu_a=0, g=0, desc='glass')
 
     # Create an illuminator
-    lamp = Illumination(create_oblique_beams((0, 1), 40, 1.0))
+    lamp = Illumination(create_oblique_beams((0, 1), 40, 1.25))
 
     # Create detection cone
     detector = Detector(create_cone_of_acceptance(r=1.8, na=1, n=1.33))
@@ -31,7 +31,7 @@ def generate():
                     illuminator=lamp,
                     detector=(detector, 0)
                     )
-    tissue = Medium(n=1.33, mu_s=0, mu_a=0, g=g, desc='tissue')  # Placeholder to update at iteration
+    tissue = Medium(n=1.33, mu_s=1, mu_a=1, g=g, desc='tissue')  # Placeholder to update at iteration
     system.add(tissue, d)
 
     # Generate a photon object (either directly or through the system illumination)
@@ -44,12 +44,12 @@ def generate():
     return simulation_id
 
 def show_surfaces(simulation_id):
-    lut = LUT(dimensions=['mu_s', 'mu_a'], simulation_id=simulation_id, scale=50000)
+    lut = LUT(dimensions=['mu_s', 'mu_a'], simulation_id=simulation_id, scale=n)
     X, Y, Z = lut.surface()
-    y = Y * (1 - g)
+    X *= (1 - g)
     fig = plt.figure(figsize=[15, 15])
     ax = fig.add_subplot(1, 1, 1, projection='3d')
-    ax.plot_wireframe(y, X, Z / 50000)
+    ax.plot_wireframe(Y, X, Z)
     ax.set_title('Monte Carlo')
     ax.set_xlabel("$\mu_a$")
     ax.set_ylabel("$\mu_s'$")
