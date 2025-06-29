@@ -79,7 +79,8 @@ def process_simulation(args):
     t1, t2, acntr, asprd, convolved = args
     tau1 = np.ones((64, 64, 1)) * t1
     tau2 = np.ones((64, 64, 1)) * t2
-    alpha = rng.uniform(acntr - asprd / 2, acntr + asprd / 2, size=(64, 64, 1)).clip(0, 1)
+
+    alpha = rng.normal(loc=acntr, scale=asprd, size=(64, 64, 1)).clip(0, 1)
     tm = np.sum(t1 * alpha + t2 * (1 - alpha), axis=-1)
     decay = generate_decay_histogram(tau1=tau1, tau2=tau2, alpha=alpha)
     decay = decay[np.newaxis, ...]
