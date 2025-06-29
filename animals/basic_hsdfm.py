@@ -21,7 +21,6 @@ from photon_canon.contrib.bio import hemoglobin_mus
 from photon_canon.lut import LUT
 from photon_canon.contrib.bio import wl, eps
 import cv2
-import imageio.v3 as iio
 from datetime import datetime, timedelta
 import warnings
 
@@ -113,11 +112,11 @@ def process_cycle(args, skip_today=False):
             animal, date, oxygen, fov,
             np.mean(thb[mask]), np.mean(so2[mask]), np.mean(c), str(cycle)
                   ]
-        iio.imwrite(out_path / 'hsdfm_mask.tiff', mask)
-        iio.imwrite(out_path / 'thb.tiff', thb)
-        iio.imwrite(out_path / 'so2.tiff', so2)
-        iio.imwrite(out_path / 'c.tiff', c)
-        iio.imwrite(out_path / 'hsdfm_chi_sq.tiff', chi_sq)
+        tf.imwrite(out_path / 'hsdfm_mask.tiff', mask)
+        tf.imwrite(out_path / 'thb.tiff', thb)
+        tf.imwrite(out_path / 'so2.tiff', so2)
+        tf.imwrite(out_path / 'c.tiff', c)
+        tf.imwrite(out_path / 'hsdfm_chi_sq.tiff', chi_sq)
 
         return output
     except Exception as e:
@@ -171,9 +170,9 @@ def preprocess_and_save(hs, out_path):
     hs.apply_mask(mask)
 
     # Save
-    iio.imwrite(out_path / 'gabor_response.tiff', gabor_response)
-    iio.imwrite(out_path / 'hb_index.tiff', hb_index)
-    iio.imwrite(out_path / 'pre_mask.tiff', mask)
+    tf.imwrite(out_path / 'gabor_response.tiff', gabor_response)
+    tf.imwrite(out_path / 'hb_index.tiff', hb_index)
+    tf.imwrite(out_path / 'pre_mask.tiff', mask)
 
 
 def preprocess_cycle_for_fitting(args):
