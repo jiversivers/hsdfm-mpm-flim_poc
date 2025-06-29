@@ -15,10 +15,14 @@ powered by `photon_canon.lut`
 
 #### Round trip
 [`hsdfm-mpm-flim_poc/mclut/round_trip_validation.ipynb`](mclut/round_trip_validation.ipynb)
-1. Generate random arrays of biological properties.
-2. Model these properties forward to get optical properties, and then reflectance from the MCLUT.
-3. Fit the modelled reflectance back to the MCLUT.
-4. Compare starting and retrieved biological parameters.
+1. The MCLUT is loaded (`photon_canon.lut.LUT`) and a 3$\times$3 Gaussian kernel with $\sigma=2$ is applied to the response surface.
+2. Arrays for all 4 parameters are iterated through to find maximum acceptable values for each based on the shape of the surface and bounds of the simualtion.
+3. For each parameter, a 32$\times$32 array is drwan from a uniform random distribution $\in [0, P_\mathrm{max})$ accrding to the max values foudn in the previous step.
+4. These parameter arrays are passed forward through the model to generate a reflectance curve for each pixel.
+5. These reflectance curves are then fit according to the experimental procedure, but $a$ and $b$ are allowed to fit as well, and no baseline shift, $c$ is fit.
+6. A $\chi^2_\nu$ of 1.5 is used as a cutoff. The percent of pixels above that threshold is recorded.
+7. Each parameter fit was scored where the fits were acceptable.
+8. Plots of a linear regression of true vs predicted value were created and saved.
 
 #### Food coloring
 [`hsdfm-mpm-flim_poc/phantoms/food_coloring_validation.ipynb`](phantoms/food_coloring_validation.ipynb)
@@ -97,14 +101,23 @@ powered by `hsdfmpm.hsdfm.fit`
    $$
       \mathrm{NAD(P)H}\left(d\right) \sim \mathrm{NAD(P)H}\left(\mathrm{pO_2}\left(d\right)\right), \,\,\,  \mathrm{pO_2^{(0)}} = \mathrm{pO_2}\left(\mathrm{sO_2^{\mathrm{(HSDF)}}}\right)
    $$
-6. The resulting fit parameters are stored, and the fit quality assessed using $\chi^2_\nu$, where $\sigma$ is estimated using a wavelet estimation for the image (`skimage.restoration.estimate_sigma`).
+
+5. The resulting fit parameters are stored, and the fit quality assessed using $\chi^2_\nu$, where $\sigma$ is estimated using a wavelet estimation for the image (`skimage.restoration.estimate_sigma`).
 
 ### Fluorescence Lifetime Imaging
 powered by `hsdfmp.mpm.flim`
 
 #### Phasor round-trip validation
 [`hsdfm-mpm-flim_poc/animals/package/validating_phasors.py`](package/validating_phasors.py)
-1.
+1. Arrays of $\tau_1$, $\tau_2$, $\bar{\alpha_1}$, and $\sigma_{\alpha_1}$ were generated in biologically relevant ranges.
+2. An array of size 64$\times$64 of $\alpha_1$ values were drawn from a normal distribtuion about $\bar\alpha$ with standard deviation $\sigma_{\alpha_1}$.
+3. The random alphas were used to generate a two-species decay with $\tau_1$ and $\tau_2$ lifetime mixtures by drawing $n$ photons from a multionomial distribution with probabilities described by the normalized weighted average of lifetime decays:
+$$
+   P_i = \frac{\alpha_1 \exp{-t_i/\tau_1} + \alpha_1 \exp{-t_i/\tau_1}}{\sum_i\left(\alpha_1 \exp{-t_i/\tau_1} + \alpha_1 \exp{-t_i/\tau_1}\right)}
+$$
+4. The decay is either convolved with the actual IRF or not. In the case it is, the correction will be applied later, as calculated from the IRF.
+5. The decay is then processed as an experimental image.
+6. Scores for retrieved parameters and goodness of fit statistics are stored.
 
 #### Processing
 [`hsdfm-mpm-flim_poc/animals/basic_flim.py`](animals/basic_flim.py)
