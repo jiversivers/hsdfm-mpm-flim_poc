@@ -11,14 +11,11 @@ from tqdm import tqdm
 from hsdfmpm.mpm import InstrumentResponseFunction
 from hsdfmpm.mpm.flim.utils import (
     get_phasor_coordinates,
-    polar_from_cartesian,
-    cartesian_from_polar,
     find_intersection_with_circle,
     project_to_line,
     lifetime_from_cartesian,
     get_endpoints_from_projection,
-    phasor_svd,
-    convert_vT_to_point_slope
+    fit_phasor
 )
 
 rng = np.random.default_rng(42)
@@ -94,8 +91,10 @@ def process_simulation(args):
     g, s = P.real, P.imag
 
     # Fit a line
-    vT, ratio, mu = phasor_svd(g, s)
-    b, m = convert_vT_to_point_slope(vT, mu)
+    output = fit_phasor(g, s)
+    b, m = output["fit_y_intercept"], output["fit_slope"]
+    ratio = output["aspect_ratio"]
+    p_value, n, red_chi_squared = output["p_value"], output["n"], output["red_chi_squared"]
     xs, ys = find_intersection_with_circle(b, m)
     gp, sp = project_to_line(g, s, xs, ys)
     tau = lifetime_from_cartesian(xs, ys, omega)  # tau:
@@ -109,7 +108,7 @@ def process_simulation(args):
     a2_score = score(alphas[1].flatten(), (1 - alpha).flatten())
     tm_score = score(tau_m.flatten(), tm.flatten())
 
-    out = [ratio, t1_score, t2_score, taus_score, a1_score, a2_score, tm_score]
+    out = [ratio, t1_score, t2_score, taus_score, a1_score, a2_score, tm_score, p_value, n, red_chi_squared]
     gc.collect()
 
     return out
@@ -151,27 +150,32 @@ if __name__ == '__main__':
 
         df = pd.DataFrame(
             unpacked_data,
-            columns=['true_t1',
-                     'true_t2',
-                     'center_alpha',
-                     'spread_alpha',
-                     'convolved',
-                     'ratio',
-                     't1_bias',
-                     't1_rmse',
-                     't2_bias',
-                     't2_rmse',
-                     'taus_bias',
-                     'taus_rmse',
-                     'a1_bias',
-                     'a1_rmse',
-                     'a1_r2',
-                     'a2_bias',
-                     'a2_rmse',
-                     'a2_r2',
-                     'tm_bias',
-                     'tm_rmse',
-                     'tm_r2']
+            columns=[
+                'true_t1',
+                'true_t2',
+                'center_alpha',
+                'spread_alpha',
+                'convolved',
+                'ratio',
+                't1_bias',
+                't1_rmse',
+                't2_bias',
+                't2_rmse',
+                'taus_bias',
+                'taus_rmse',
+                'a1_bias',
+                'a1_rmse',
+                'a1_r2',
+                'a2_bias',
+                'a2_rmse',
+                'a2_r2',
+                'tm_bias',
+                'tm_rmse',
+                'tm_r2'
+                'p_value',
+                'n',
+                'red_chi_squared'
+            ]
         )
         df.to_csv('phasor_validation_sweep_stats.csv')
     except Exception as e:
