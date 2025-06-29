@@ -1,5 +1,6 @@
 import gc
 from functools import partial
+import tifffile as tf
 from multiprocessing import Pool
 from multiprocessing.spawn import freeze_support
 
@@ -11,6 +12,7 @@ from hsdfmpm.hsdfm.fit import reduced_chi_squared, fit_volume
 from hsdfmpm.utils import apply_kernel_bank
 import pandas as pd
 from hsdfmpm.hsdfm import HyperspectralImage, MergedHyperspectralImage
+from hsdfmpm.utils import bin
 from pathlib import Path
 from hsdfmpm.utils import truncate_colormap, colorize
 from matplotlib.colors import Normalize
@@ -45,14 +47,7 @@ def find_dated_dir(date, paths):
     return matches
 
 
-def model(t, s, c):
-    mu_s, mu_a, _ = hemoglobin_mus(10, 1, t, s, wavelengths, force_feasible=False)
-    mu_s /= 0.1
-    r = lut(mu_s, mu_a, extrapolate=True) + c
-    return r
-
-
-def process_cycle(cycle, out_path, skip_today=False):
+def process_cycle(args, skip_today=False):
     # if skip_today and (out_path / 'scatter_a.tiff').exists() and datetime.fromtimestamp((out_path / 'scatter_a.tiff').stat().st_mtime).date() == datetime.today().date():
     #     print(f'Skipping cycle {cycle}')
     #     mask = cv2.imread(out_path / 'hsdfm_mask.tiff', cv2.IMREAD_UNCHANGED)
@@ -67,14 +62,24 @@ def process_cycle(cycle, out_path, skip_today=False):
     #     ]
     #
     #     return output
+    cycle, out_path, wavelengths, lut = args
+    out_path = Path(out_path)
     animal, date, oxygen, fov, root = parse_categorical(cycle)
+
+    def model(t, s, c):
+        mu_s, mu_a, _ = hemoglobin_mus(10, 1, t, s, wavelengths, force_feasible=False)
+        mu_s /= 0.1
+        r = lut(mu_s, mu_a, extrapolate=True) + c
+        return r
+
     try:
         # Load cycle subset for naive fitting to mask
         img = cv2.imread(out_path / 'hsdfm_norm.tiff', cv2.IMREAD_UNCHANGED)
         hb_index = cv2.imread(out_path / 'hb_index.tiff', cv2.IMREAD_UNCHANGED)
         mask = cv2.imread(out_path / 'pre_mask.tiff', cv2.IMREAD_UNCHANGED)
-        img[mask] = np.nan
-
+        img = img[np.newaxis, ...]
+        img = bin(img, bin_factor=8)
+        img[:, mask] = np.nan
         param_image, chi_sq = fit_volume(
             volume=img,
             model=model,
@@ -116,7 +121,7 @@ def process_cycle(cycle, out_path, skip_today=False):
 
         return output
     except Exception as e:
-        print(f'{e}\non\n{cycle}')
+        print(f'{e} on {cycle}')
         gc.collect()
         return [
         animal, date, oxygen, fov,
@@ -132,7 +137,9 @@ def normalize_and_save(cycle, wavelengths, standard, background, out_path):
     hs.normalize_integration_time()
     hs.normalize_to_standard()
 
-    iio.imwrite(out_path / 'hsdfm_norm.tiff', hs.image.copy())
+    metadata = {'axes':'TYX'}
+    tf.imwrite(out_path / 'hsdfm_norm.tiff', hs.image.copy(), metadata=metadata)
+
     return hs
 
 
@@ -207,7 +214,7 @@ if __name__ == '__main__':
     # Get MCLUT
     smoothing_fn = partial(cv2.GaussianBlur, ksize=(3, 3), sigmaX=2)
     lut = LUT(dimensions=['mu_s', 'mu_a'], scale=50000, extrapolate=True, simulation_id=110, smoothing_fn=smoothing_fn)
-
+    #
     # Prep filter bank
     f = np.geomspace(0.01, 1, 16)
     gabor_bank = gabor_filter_bank(frequency=f, sigma_x=4 / f, sigma_y=1 / f)
@@ -229,11 +236,12 @@ if __name__ == '__main__':
     pd.DataFrame(complete_check).to_csv("check.csv")
 
     # Fitting
+    out_path = pd.read_csv(Path(__file__) / "../../check.csv")
     pool = Pool(15)
     output = []
-    args = [[cyc, out] for cyc, out in zip(complete_check, output)]
+    args = [[cyc, out, wavelengths, lut] for cyc, out in zip(cycles, out_path["0"])]
     try:
-        for out in tqdm.tqdm(map(process_cycle, args), total=len(cycles)):
+        for out in tqdm.tqdm(pool.imap(process_cycle, args), total=len(cycles)):
             output.append(out)
     finally:
         pool.terminate()
