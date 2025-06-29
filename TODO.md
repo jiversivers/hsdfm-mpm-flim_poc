@@ -1,0 +1,8 @@
+- [ ] Move naive least squares into `fit.py` for more clear namespacing
+- [ ] Check median filtering and thresholding on phasors.
+- [ ] Create phasor plots
+- [ ] Add $\chi^2_\nu$ score for phasor fit line
+- [ ] Create NADH maps
+- [ ] Check curve for NADH intensity/orr as funciton of distance
+- [ ] Creaete multimodal processing flow
+- [ ] Create group-wise output collector.
