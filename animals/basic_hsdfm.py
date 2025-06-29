@@ -16,13 +16,13 @@ from hsdfmpm.utils import bin
 from pathlib import Path
 from hsdfmpm.utils import truncate_colormap, colorize
 from matplotlib.colors import Normalize
-
 from photon_canon.contrib.bio import hemoglobin_mus
 from photon_canon.lut import LUT
 from photon_canon.contrib.bio import wl, eps
 import cv2
 from datetime import datetime, timedelta
 import warnings
+
 
 def parse_categorical(cycle):
     # Prepare categorical data
@@ -46,30 +46,21 @@ def find_dated_dir(date, paths):
     return matches
 
 
-def process_cycle(args, skip_today=False):
-    # if skip_today and (out_path / 'scatter_a.tiff').exists() and datetime.fromtimestamp((out_path / 'scatter_a.tiff').stat().st_mtime).date() == datetime.today().date():
-    #     print(f'Skipping cycle {cycle}')
-    #     mask = cv2.imread(out_path / 'hsdfm_mask.tiff', cv2.IMREAD_UNCHANGED)
-    #     thb = cv2.imread(out_path / 'thb.tiff', cv2.IMREAD_UNCHANGED)
-    #     so2 = cv2.imread(out_path / 'so2.tiff', cv2.IMREAD_UNCHANGED)
-    #     c = cv2.imread(out_path / 'c.tiff', cv2.IMREAD_UNCHANGED)
-    #
-    #     # Update output
-    #     output = [
-    #         animal, date, oxygen, fov,
-    #         np.mean(thb[mask]), np.mean(so2[mask]), np.mean(c), str(cycle)
-    #     ]
-    #
-    #     return output
-    cycle, out_path, wavelengths, lut = args
+def process_cycle(args):
+    cycle, out_path, wavelengths, lut, sca_idx, abs_idx = args
     out_path = Path(out_path)
     animal, date, oxygen, fov, root = parse_categorical(cycle)
 
-    def model(t, s, c):
-        mu_s, mu_a, _ = hemoglobin_mus(10, 1, t, s, wavelengths, force_feasible=False)
-        mu_s /= 0.1
-        r = lut(mu_s, mu_a, extrapolate=True) + c
-        return r
+    # Define an offset only mode to fit in non-absorptive wavelengths
+    mu_s_sca, _, _ = hemoglobin_mus(10, 1, 0, 0, wavelengths[sca_idx], force_feasible=False)
+    r = lut(10 * mu_s_sca, 0)
+    def offset_model(c):
+        return r + c
+
+    # Define the vascular model
+    def abs_model(t, s):
+        mu_s, mu_a, _ = hemoglobin_mus(10, 1, t, s, wavelengths[abs_idx], force_feasible=False)
+        return lut(10 * mu_s, mu_a, extrapolate=True)
 
     try:
         # Load cycle subset for naive fitting to mask
@@ -78,20 +69,40 @@ def process_cycle(args, skip_today=False):
         mask = cv2.imread(out_path / 'pre_mask.tiff', cv2.IMREAD_UNCHANGED)
         img = img[np.newaxis, ...]
         img = bin(img, bin_factor=8)
-        img[:, mask] = np.nan
+
+        # Fit the offset model in the scatter dominated wavelengths
+        sca_img = img[sca_idx]
         param_image, chi_sq = fit_volume(
-            volume=img,
-            model=model,
-            x0=[0.5, 0.5, 0],
-            bounds=[(0, 0, -np.inf), (np.inf, 1, np.inf)],
+            volume=sca_img,
+            model=offset_model,
+            x0=[0],
             use_multiprocessing=False,
             score_function=reduced_chi_squared,
-            max_nfev=5000)
-        thb, so2, c = param_image
+            max_nfev=5000,
+            pbar=True
+        )
+        c = param_image
+
+
+        # Fit the vascular-space with the absorption model in the absorption dominated wavelengths
+        img[:, mask] = np.nan  # Mask the vasculature
+        img = img[abs_idx] - c  # Apply the offset
+        param_image, chi_sq = fit_volume(
+            volume=img,
+            model=abs_model,
+            x0=[0.5, 0.5],
+            bounds=[(0, 0), (np.inf, 1)],
+            use_multiprocessing=False,
+            score_function=reduced_chi_squared,
+            max_nfev=5000,
+            pbar=True
+        )
+        thb, so2 = param_image
+        available_o2 = 4 * thb * so2
 
         # Create color maps
         cmap = truncate_colormap('jet', cmin=0.13, cmax=0.88)
-        for png_name, im in zip(['thb', 'so2', 'c'], [thb, so2, c]):
+        for png_name, im in zip(['thb', 'so2', 'offset', 'available_o2'], [thb, so2, c, available_o2]):
             im[~mask] = 0
             cmin, cmax = np.nanmean(im[mask]) + np.array([-2, 2]) * np.nanstd(im[mask])
             cmin = max(0, cmin)
@@ -175,7 +186,7 @@ def preprocess_and_save(hs, out_path):
     tf.imwrite(out_path / 'pre_mask.tiff', mask)
 
 
-def preprocess_cycle_for_fitting(args):
+def preprocess_cycle_for_fitting(args, skip_exists=True):
     cycle, wavelengths, standard, background = args
 
     # Find raw data
@@ -184,6 +195,11 @@ def preprocess_cycle_for_fitting(args):
     processed.mkdir(exist_ok=True)
     out_path = processed / animal / datetime.strftime(date, '%m%d%Y') / oxygen / fov
     out_path.mkdir(exist_ok=True, parents=True)
+    if skip_exists and (out_path / 'hsdfm_norm.tiff').exists():
+            # and datetime.fromtimestamp((out_path / 'hsdfm_norm.tiff').stat().st_mtime).date() == datetime.today().date()):
+        print("Skipping:", animal, date, oxygen, fov)
+        return out_path
+
     hs = normalize_and_save(cycle, wavelengths, standard, background, out_path)
     preprocess_and_save(hs, out_path)
 
@@ -199,7 +215,11 @@ if __name__ == '__main__':
     cycles = find_cycles(root / "Animals")
 
     # Choose fitting wavelengths
-    wavelengths = np.arange(500, 610, 10)
+    wavelengths = np.arange(500, 730, 10)
+    absorption_dominated = np.arange(500, 610, 10)
+    scatter_dominated = np.arange(610, 730, 10)
+    abs_idx = np.array([wl in absorption_dominated for wl in wavelengths])
+    sca_idx = np.array([wl in scatter_dominated for wl in wavelengths])
 
     # Load normalization data
     standard_paths = find_cycles(r'D:\Jesse\hsdfmpm_poc\Standards')
@@ -213,7 +233,7 @@ if __name__ == '__main__':
     # Get MCLUT
     smoothing_fn = partial(cv2.GaussianBlur, ksize=(3, 3), sigmaX=2)
     lut = LUT(dimensions=['mu_s', 'mu_a'], scale=50000, extrapolate=True, simulation_id=110, smoothing_fn=smoothing_fn)
-    #
+
     # Prep filter bank
     f = np.geomspace(0.01, 1, 16)
     gabor_bank = gabor_filter_bank(frequency=f, sigma_x=4 / f, sigma_y=1 / f)
@@ -238,7 +258,7 @@ if __name__ == '__main__':
     out_path = pd.read_csv(Path(__file__) / "../../check.csv")
     pool = Pool(15)
     output = []
-    args = [[cyc, out, wavelengths, lut] for cyc, out in zip(cycles, out_path["0"])]
+    args = [[cyc, out, wavelengths, lut, sca_idx, abs_idx] for cyc, out in zip(cycles, out_path["0"])]
     try:
         for out in tqdm.tqdm(pool.imap(process_cycle, args), total=len(cycles)):
             output.append(out)

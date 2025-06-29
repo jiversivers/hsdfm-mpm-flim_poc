@@ -60,8 +60,9 @@ powered by `hsdfmpm.hsdfm.fit`
 ### Fitting
 powered by `hsdfmpm.hsdfm.fit`
 
-1. Create a model wih a MCLUT with $a$ and $b$ fixed at experimentally confirmed values of 10 and 1 and an intercept, $c$ added for baseline adjustment, $R_m \sim f(10, 1, \mathrm{[tHb]}, \mathrm{sO_2}) + c$ where $f(a, b, \mathrm{[tHb]}, \mathrm{sO_2}) = \mathrm{MCLUT}(a \frac{\lambda}{\lambda_0}^{-b}, \sum_iC_i\epsilon_i)$
-2. Fit the image to the model using nonlinear least squares (`scipy.optimize.least_sqaures`) using the Trust Region Reflective method to minimize the sum of squared residuals. A finite difference approximation is used for the Jacobian for each parameter w.r.t. the reflectance.
+1. Fit a simple model in hihg-scatter, low-absorbing portion of the spectrum, $\lambda \in [610, 720]$, to obtain a correction factor $c$: $R_m \sim f(10, 1, 0, 0) + c$ 
+2. Create a model wih a MCLUT with $a$ and $b$ fixed at experimentally confirmed values of 10 and 1 and an intercept, $c$ added for baseline adjustment, $R_m - c \sim f(10, 1, \mathrm{[tHb]}, \mathrm{sO_2})$ where $f(a, b, \mathrm{[tHb]}, \mathrm{sO_2}) = \mathrm{MCLUT}(a \frac{\lambda}{\lambda_0}^{-b}, \sum_iC_i\epsilon_i)$
+2. Fit the image for $\mathrm{[tHb]}$ and $\mathrm{sO_2}$ using nonlinear least squares (`scipy.optimize.least_sqaures`) with the Trust Region Reflective method to minimize the sum of squared residuals. A finite difference approximation is used for the Jacobian for each parameter w.r.t. the reflectance.
 3. Calculate reduced chi squared $\chi^2_\nu = \frac{1}{\nu} \sum_i\frac{(O_i -E_i) ^ 2}{\sigma_i^2}$ where $\nu = P - N$.
 4. Calculate the average, standard deviation, and count of $\mathrm{sO_2}$ and $\mathrm{[tHb]}$ where $\chi^2_\nu \leq 1.5$.
 5. Create and save vascular masks, maps of output parameters, and colorized figures.
