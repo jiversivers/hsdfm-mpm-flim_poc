@@ -105,6 +105,13 @@ powered by `hsdfmpm.hsdfm.fit`
 
 5. The resulting fit parameters are stored, and the fit quality assessed using $\chi^2_\nu$, where $\sigma$ is estimated using a wavelet estimation for the image (`skimage.restoration.estimate_sigma`).
 
+### K-Means Clustering
+
+1. K-means clustering was applied to $ORR$ maps that were filtered with a 3$\times$3 Gaussian kernel with $\sigma_x = \sigma_y=1$.
+2. The number of clusters was set to 3, after being experimentally determined across a subset of images via elbow plot.
+3. The average distance of each cluster from vasculature is determined from the map of distance to vasculature.
+4. The average $ORR$ and the average distance of low, medium, and high $ORR$ clusters is compared across treatments with a two-factor mixed-effects model with 
+
 ### Fluorescence Lifetime Imaging
 powered by `hsdfmp.mpm.flim`
 

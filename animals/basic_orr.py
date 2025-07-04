@@ -13,12 +13,12 @@ import pandas as pd
 from tqdm import tqdm
 
 # Dir stuff
-root_dir = Path(r'D:\Jesse\hsdfmpm_poc')
-processed = root_dir / 'Processed'
+root_dir = Path(r'D:\Jesse\Animal POC')
+processed = root_dir / 'Animals' / 'Processed'
 processed.mkdir(exist_ok=True)
 
 # Point to power files
-power_file_dir = root_dir / 'LaserPower'
+power_file_dir = root_dir / 'Laser Power'
 
 # Get paths
 raw_paths = find_cycles(root_dir / 'Animals', search_term='.xml')
@@ -39,16 +39,13 @@ def main():
             continue
 
         # Parse sample categories
-        animal, date, oxygen, fov = path.parts[-4:]
+        date, animal, oxygen, fov = path.parts[-4:]
         date = datetime.strptime(date, '%m%d%Y').date()
         out_path = Path(processed, animal, datetime.strftime(date, '%m%d%Y'), oxygen, fov)
         out_path.mkdir(exist_ok=True, parents=True)
 
         # Load images
         orr = OpticalRedoxRatio(ex755=ex755_path[0], ex855=ex855_path[0], power_file_path=power_file_dir)
-
-        # Down sample for SNR and to match HSDFM
-        orr.resize_to(256)
 
         # Create outputs
         cmap = truncate_colormap('jet', cmin=0.13, cmax=0.88)
@@ -69,8 +66,8 @@ def main():
         # Save output images
         iio.imwrite(out_path / 'orr_map.tiff', orr.map)
         iio.imwrite(out_path / 'af_intensity.tiff', (orr.fad + orr.nadh) / 2 )
-        iio.imwrite(out_path / 'nadh_intensity.tiff', orr.nadh)
-        iio.imwrite(out_path / 'fad_intensity.tiff', orr.fad)
+        iio.imwrite(out_path / 'nadh.tiff', orr.nadh)
+        iio.imwrite(out_path / 'fad.tiff', orr.fad)
         fig.savefig(out_path / 'color_orr.png')
         plt.close(fig)
 
